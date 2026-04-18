@@ -1,0 +1,208 @@
+Build a full-stack real-time cricket scoring web application using Next.js (App Router), Firebase (Firestore + Auth), and Tailwind CSS.
+
+The app is for a local "Circle Cricket" tournament. It must be lightweight, fast, mobile-friendly, and designed for real-time updates without page refresh.
+
+---
+
+## TECH STACK
+
+* Next.js (latest, App Router)
+* Firebase:
+
+  * Firestore (real-time database)
+  * Firebase Authentication (admin login)
+* Tailwind CSS (for styling)
+* No heavy UI libraries
+
+---
+
+## CORE FEATURES
+
+1. PUBLIC LIVE DASHBOARD (/)
+
+* Display current live match:
+
+  * Team A vs Team B
+  * Runs, wickets, overs
+  * Current innings (A or B)
+  * Match status (LIVE / COMPLETED)
+* Must update instantly in real-time using Firestore onSnapshot
+* Large, clean scoreboard UI (like TV broadcast)
+* Show "No match live" if no active match
+
+---
+
+2. ADMIN PANEL (/admin)
+
+* Login using Firebase Authentication (email/password)
+* Protected route (only logged-in users)
+
+Admin capabilities:
+
+* Add new teams
+* Delete teams
+* View all teams
+
+Match management:
+
+* Select two teams and start a match
+* Create match document in Firestore
+* Set it as current live match
+
+Live scoring controls:
+
+* Add runs (buttons: +1, +2, +3, +4, +6)
+* Add wicket
+* Add over
+* Switch innings
+* End match
+
+All updates must:
+
+* Instantly update Firestore
+* Reflect on live dashboard in real time
+
+Bonus:
+
+* Undo last action (optional but preferred)
+
+---
+
+3. STANDINGS PAGE (/standings)
+
+* Show all teams in a table:
+
+  * Matches played
+  * Wins
+  * Losses
+  * Runs scored
+  * Runs conceded
+  * Points
+* Sort teams by points (descending)
+* Update automatically after match ends
+
+---
+
+4. MATCH HISTORY (/matches)
+
+* List all completed matches
+* Show:
+
+  * Teams
+  * Final scores
+  * Winner
+
+---
+
+## DATABASE STRUCTURE (Firestore)
+
+teams (collection)
+
+* id
+* name
+* matchesPlayed
+* wins
+* losses
+* runsFor
+* runsAgainst
+* points
+
+matches (collection)
+
+* id
+* teamA (teamId)
+* teamB (teamId)
+* scoreA
+* wicketsA
+* oversA
+* scoreB
+* wicketsB
+* oversB
+* status ("live", "completed")
+* currentInnings ("A", "B")
+* createdAt
+
+currentMatch (document)
+
+* matchId
+
+---
+
+## REAL-TIME REQUIREMENTS
+
+* Use Firestore onSnapshot listeners
+* Dashboard must update instantly when admin updates score
+* No manual refresh anywhere
+
+---
+
+## UI / DESIGN REQUIREMENTS
+
+* Minimal, clean, modern UI
+* Use Tailwind CSS only
+* Mobile-first design
+* Avoid heavy animations
+* Clear typography and spacing
+
+Dashboard design:
+
+* Big score display
+* Team names clearly visible
+* Overs and wickets below score
+* Status badge (LIVE / COMPLETED)
+
+Admin design:
+
+* Simple buttons for scoring
+* Clear layout for match control
+* Fast interaction (low latency)
+
+---
+
+## CODE STRUCTURE
+
+* Use modular components:
+
+  * Scoreboard
+  * TeamSelector
+  * AdminControls
+  * StandingsTable
+* Separate Firebase config file
+* Use hooks for Firestore logic
+
+---
+
+## FUNCTIONAL REQUIREMENTS
+
+* Prevent invalid updates (e.g., negative scores)
+* Handle edge cases:
+
+  * No teams
+  * No match
+  * Match already completed
+* Ensure data consistency
+
+---
+
+## BONUS FEATURES (IF POSSIBLE)
+
+* Undo last scoring action
+* Toast notifications for actions
+* Loading states
+* Error handling
+
+---
+
+## OUTPUT REQUIREMENTS
+
+* Full working code
+* Folder structure
+* Firebase setup instructions
+* Environment variables setup
+* Clear comments in code
+
+---
+
+## GOAL
+
+The app should behave like a live cricket scoreboard used in tournaments, where an admin updates scores and spectators see updates instantly on their devices.
