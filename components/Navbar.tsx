@@ -6,7 +6,6 @@ const links = [
   { href: "/", label: "Live" },
   { href: "/standings", label: "Standings" },
   { href: "/matches", label: "Matches" },
-  { href: "/admin", label: "Admin" },
 ];
 
 export default function Navbar() {

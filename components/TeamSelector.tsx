@@ -4,30 +4,23 @@ import type { Team } from "@/lib/types";
 
 interface TeamSelectorProps {
   teams: Team[];
-  onStart: (teamA: Team, teamB: Team) => void;
+  onStart: (teamA: Team, teamB: Team, maxOvers: number, maxWickets: number) => void;
   disabled?: boolean;
 }
 
-export default function TeamSelector({
-  teams,
-  onStart,
-  disabled,
-}: TeamSelectorProps) {
+export default function TeamSelector({ teams, onStart, disabled }: TeamSelectorProps) {
   const [teamAId, setTeamAId] = useState("");
   const [teamBId, setTeamBId] = useState("");
+  const [maxOvers, setMaxOvers] = useState(6);
+  const [maxWickets, setMaxWickets] = useState(10);
 
   const teamA = teams.find((t) => t.id === teamAId);
   const teamB = teams.find((t) => t.id === teamBId);
-
-  const canStart =
-    teamA &&
-    teamB &&
-    teamAId !== teamBId &&
-    !disabled;
+  const canStart = teamA && teamB && teamAId !== teamBId && !disabled;
 
   function handleStart() {
     if (!teamA || !teamB) return;
-    onStart(teamA, teamB);
+    onStart(teamA, teamB, maxOvers, maxWickets);
     setTeamAId("");
     setTeamBId("");
   }
@@ -40,8 +33,19 @@ export default function TeamSelector({
     );
   }
 
+  const inputStyle = {
+    background: "#0d1525",
+    border: "1px solid #1e293b",
+    borderRadius: 8,
+    color: "#f1f5f9",
+    padding: "0.45rem 0.65rem",
+    fontSize: "0.875rem",
+    width: "100%",
+  };
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "0.9rem" }}>
+      {/* Team selectors */}
       <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
         <select
           id="team-a-select"
@@ -58,15 +62,7 @@ export default function TeamSelector({
           ))}
         </select>
 
-        <span
-          style={{
-            display: "flex",
-            alignItems: "center",
-            color: "#475569",
-            fontWeight: 700,
-            fontSize: "0.75rem",
-          }}
-        >
+        <span style={{ display: "flex", alignItems: "center", color: "#475569", fontWeight: 700, fontSize: "0.75rem" }}>
           VS
         </span>
 
@@ -84,6 +80,50 @@ export default function TeamSelector({
             </option>
           ))}
         </select>
+      </div>
+
+      {/* Match limits */}
+      <div
+        style={{
+          background: "rgba(59,130,246,0.06)",
+          border: "1px solid rgba(59,130,246,0.18)",
+          borderRadius: 10,
+          padding: "0.75rem 1rem",
+        }}
+      >
+        <p style={{ fontSize: "0.7rem", fontWeight: 700, color: "#3b82f6", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.6rem" }}>
+          ⚙️ Match Settings
+        </p>
+        <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 110 }}>
+            <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 4 }}>
+              Max Overs per innings
+            </label>
+            <input
+              id="max-overs-input"
+              type="number"
+              min={1}
+              max={50}
+              value={maxOvers}
+              onChange={(e) => setMaxOvers(Math.max(1, parseInt(e.target.value) || 1))}
+              style={inputStyle}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 110 }}>
+            <label style={{ fontSize: "0.72rem", color: "#64748b", display: "block", marginBottom: 4 }}>
+              Max Wickets per innings
+            </label>
+            <input
+              id="max-wickets-input"
+              type="number"
+              min={1}
+              max={10}
+              value={maxWickets}
+              onChange={(e) => setMaxWickets(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+              style={inputStyle}
+            />
+          </div>
+        </div>
       </div>
 
       <button

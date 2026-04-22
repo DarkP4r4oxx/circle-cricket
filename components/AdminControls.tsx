@@ -17,36 +17,27 @@ const RUN_BUTTONS = [1, 2, 3, 4, 6];
  * After 5 balls (x.5), the next ball completes the over → becomes (x+1).0
  */
 function nextOver(currentOvers: number): number {
-  // Extract whole overs and balls from decimal (e.g. 2.4 → 2 overs, 4 balls)
   const wholeOvers = Math.floor(currentOvers);
-  // Round to avoid floating point weirdness (e.g. 0.1+0.1+... drift)
   const balls = Math.round((currentOvers - wholeOvers) * 10);
-
   if (balls >= 5) {
-    // 6th ball of the over — complete the over
     return wholeOvers + 1;
   } else {
-    // Increment ball count within over
     return parseFloat((wholeOvers + (balls + 1) / 10).toFixed(1));
   }
 }
 
 export default function AdminControls({ match }: AdminControlsProps) {
   const [loading, setLoading] = useState(false);
-  const [toast, setToast] = useState<{
-    msg: string;
-    type: "success" | "error" | "info";
-  } | null>(null);
+  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" | "info" } | null>(null);
 
-  function showToast(
-    msg: string,
-    type: "success" | "error" | "info" = "success"
-  ) {
+  const maxOvers = match.maxOvers ?? 999;
+  const maxWickets = match.maxWickets ?? 10;
+
+  function showToast(msg: string, type: "success" | "error" | "info" = "success") {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2500);
   }
 
-  // Snapshot current state for undo
   function currentSnapshot(): MatchScore {
     return {
       scoreA: match.scoreA,
@@ -80,16 +71,52 @@ export default function AdminControls({ match }: AdminControlsProps) {
     }
   }
 
-  // Add runs — also auto-increments the ball/over counter
+  // ── Auto-end logic ──────────────────────────────────────────────────────────
+  // Called after every ball is recorded. Checks whether the current innings
+  // (or the whole match) should end automatically based on maxOvers/maxWickets.
+
+  async function checkAndAutoEnd(
+    newOvers: number,
+    newWickets: number,
+    innings: "A" | "B"
+  ) {
+    const oversUp = Math.floor(newOvers) >= maxOvers;
+    const wicketsUp = newWickets >= maxWickets;
+
+    if (!oversUp && !wicketsUp) return; // nothing to trigger
+
+    if (innings === "A") {
+      // End 1st innings, switch to 2nd
+      showToast("1st innings over! Switching to 2nd innings 🔄", "info");
+      setLoading(true);
+      try {
+        await updateDoc(doc(db, "matches", match.id), {
+          currentInnings: "B",
+          actionLog: arrayUnion(currentSnapshot()),
+        });
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // End 2nd innings → end match
+      showToast("Match limit reached! Ending match… 🏆", "info");
+      await endMatch();
+    }
+  }
+
+  // ── Scoring actions ────────────────────────────────────────────────────────
+
   async function addRuns(runs: number) {
     const isA = match.currentInnings === "A";
     const scoreField = isA ? "scoreA" : "scoreB";
     const oversField = isA ? "oversA" : "oversB";
     const currentScore = isA ? match.scoreA : match.scoreB;
     const currentOvers = isA ? match.oversA : match.oversB;
+    const currentWickets = isA ? match.wicketsA : match.wicketsB;
     const newOvers = nextOver(currentOvers);
 
-    // Build update — attach lastEvent for 4s and 6s so all clients celebrate
     const updates: Partial<Match> = {
       [scoreField]: currentScore + runs,
       [oversField]: newOvers,
@@ -102,9 +129,9 @@ export default function AdminControls({ match }: AdminControlsProps) {
     }
 
     await updateMatch(updates, `+${runs} ${runs === 1 ? "run" : "runs"}`);
+    await checkAndAutoEnd(newOvers, currentWickets, match.currentInnings);
   }
 
-  // Add wicket — also counts as a ball, fires WICKET celebration
   async function addWicket() {
     const isA = match.currentInnings === "A";
     const wicketsField = isA ? "wicketsA" : "wicketsB";
@@ -112,55 +139,55 @@ export default function AdminControls({ match }: AdminControlsProps) {
     const currentWickets = isA ? match.wicketsA : match.wicketsB;
     const currentOvers = isA ? match.oversA : match.oversB;
 
+    if (currentWickets >= maxWickets) {
+      showToast(`Max wickets (${maxWickets}) already reached!`, "error");
+      return;
+    }
     if (currentWickets >= 10) {
       showToast("Maximum 10 wickets!", "error");
       return;
     }
+
     const newOvers = nextOver(currentOvers);
+    const newWickets = currentWickets + 1;
+
     await updateMatch(
       {
-        [wicketsField]: currentWickets + 1,
+        [wicketsField]: newWickets,
         [oversField]: newOvers,
         lastEvent: { type: "WICKET", ts: Date.now() },
       } as Partial<Match>,
       "Wicket! 🎯"
     );
+    await checkAndAutoEnd(newOvers, newWickets, match.currentInnings);
   }
 
-  // Add dot ball (no runs, but still a ball bowled)
   async function addDotBall() {
     const isA = match.currentInnings === "A";
     const oversField = isA ? "oversA" : "oversB";
     const currentOvers = isA ? match.oversA : match.oversB;
+    const currentWickets = isA ? match.wicketsA : match.wicketsB;
     const newOvers = nextOver(currentOvers);
-    await updateMatch(
-      { [oversField]: newOvers } as Partial<Match>,
-      "Dot ball ●"
-    );
+    await updateMatch({ [oversField]: newOvers } as Partial<Match>, "Dot ball ●");
+    await checkAndAutoEnd(newOvers, currentWickets, match.currentInnings);
   }
 
-  // Add wide / no-ball — adds run but does NOT count as a ball (no over increment)
   async function addExtra(label: string) {
     const isA = match.currentInnings === "A";
     const scoreField = isA ? "scoreA" : "scoreB";
     const currentScore = isA ? match.scoreA : match.scoreB;
-    await updateMatch(
-      { [scoreField]: currentScore + 1 } as Partial<Match>,
-      `${label} (+1 extra)`
-    );
+    // Extras don't count as a ball — no over increment, no auto-end check
+    await updateMatch({ [scoreField]: currentScore + 1 } as Partial<Match>, `${label} (+1 extra)`);
   }
 
-  // Manually complete an over (e.g. 5-ball over on last ball of innings)
   async function completeOver() {
     const isA = match.currentInnings === "A";
     const oversField = isA ? "oversA" : "oversB";
     const currentOvers = isA ? match.oversA : match.oversB;
-    // Force to next full over number
+    const currentWickets = isA ? match.wicketsA : match.wicketsB;
     const newOvers = Math.floor(currentOvers) + 1;
-    await updateMatch(
-      { [oversField]: newOvers } as Partial<Match>,
-      "Over completed"
-    );
+    await updateMatch({ [oversField]: newOvers } as Partial<Match>, "Over completed");
+    await checkAndAutoEnd(newOvers, currentWickets, match.currentInnings);
   }
 
   async function switchInnings() {
@@ -192,18 +219,19 @@ export default function AdminControls({ match }: AdminControlsProps) {
           ? match.teamA
           : null;
 
+      // runsFor / runsAgainst are SET to the latest match score (not accumulated)
       const teamAUpdates = {
         matchesPlayed: increment(1),
-        runsFor: increment(match.scoreA),
-        runsAgainst: increment(match.scoreB),
+        runsFor: match.scoreA,
+        runsAgainst: match.scoreB,
         wins: winner === match.teamA ? increment(1) : increment(0),
         losses: loser === match.teamA ? increment(1) : increment(0),
         points: winner === match.teamA ? increment(2) : increment(0),
       };
       const teamBUpdates = {
         matchesPlayed: increment(1),
-        runsFor: increment(match.scoreB),
-        runsAgainst: increment(match.scoreA),
+        runsFor: match.scoreB,
+        runsAgainst: match.scoreA,
         wins: winner === match.teamB ? increment(1) : increment(0),
         losses: loser === match.teamB ? increment(1) : increment(0),
         points: winner === match.teamB ? increment(2) : increment(0),
@@ -246,20 +274,47 @@ export default function AdminControls({ match }: AdminControlsProps) {
   const isA = match.currentInnings === "A";
   const currentOvers = isA ? match.oversA : match.oversB;
   const currentWickets = isA ? match.wicketsA : match.wicketsB;
-  // Balls remaining in current over (for display)
   const ballsInOver = Math.round((currentOvers - Math.floor(currentOvers)) * 10);
-
   const inningsLabel = isA
     ? `${match.teamAName} (1st Innings)`
     : `${match.teamBName} (2nd Innings)`;
-
   const isCompleted = match.status === "completed";
+
+  // Overs / wickets progress for current innings
+  const oversCompleted = Math.floor(currentOvers);
+  const oversPct = maxOvers < 999 ? Math.min(100, (oversCompleted / maxOvers) * 100) : 0;
+  const wicketsPct = Math.min(100, (currentWickets / maxWickets) * 100);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
       {toast && <Toast message={toast.msg} type={toast.type} />}
 
-      {/* Batting info */}
+      {/* Match limits banner */}
+      {maxOvers < 999 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.75rem",
+            padding: "0.6rem 0.9rem",
+            background: "rgba(59,130,246,0.06)",
+            border: "1px solid rgba(59,130,246,0.18)",
+            borderRadius: 8,
+            fontSize: "0.75rem",
+            color: "#94a3b8",
+          }}
+        >
+          <span>⚙️ Limits:</span>
+          <span style={{ color: oversCompleted >= maxOvers ? "#ef4444" : "#3b82f6" }}>
+            {oversCompleted}/{maxOvers} overs
+          </span>
+          <span>·</span>
+          <span style={{ color: currentWickets >= maxWickets ? "#ef4444" : "#f59e0b" }}>
+            {currentWickets}/{maxWickets} wickets
+          </span>
+        </div>
+      )}
+
+      {/* Batting info + ball indicator */}
       <div
         style={{
           padding: "0.75rem 1rem",
@@ -271,12 +326,9 @@ export default function AdminControls({ match }: AdminControlsProps) {
           justifyContent: "space-between",
         }}
       >
-        <span
-          style={{ fontSize: "0.875rem", fontWeight: 600, color: "#22c55e" }}
-        >
+        <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "#22c55e" }}>
           🏏 {inningsLabel}
         </span>
-        {/* Mini ball indicator */}
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {[0, 1, 2, 3, 4, 5].map((i) => (
             <span
@@ -293,14 +345,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
               }}
             />
           ))}
-          <span
-            style={{
-              fontSize: "0.7rem",
-              color: "#64748b",
-              marginLeft: 4,
-              fontWeight: 600,
-            }}
-          >
+          <span style={{ fontSize: "0.7rem", color: "#64748b", marginLeft: 4, fontWeight: 600 }}>
             {ballsInOver}/6
           </span>
         </div>
@@ -308,33 +353,16 @@ export default function AdminControls({ match }: AdminControlsProps) {
 
       {/* Runs buttons */}
       <div>
-        <p
-          style={{
-            color: "#64748b",
-            fontSize: "0.75rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            marginBottom: "0.5rem",
-          }}
-        >
+        <p style={{ color: "#64748b", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.5rem" }}>
           Runs (auto-counts ball)
         </p>
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-          {/* Dot ball */}
           <button
             id="add-dot-btn"
             className="btn"
             onClick={addDotBall}
             disabled={loading || isCompleted}
-            style={{
-              flex: 1,
-              minWidth: 48,
-              fontWeight: 800,
-              background: "rgba(100,116,139,0.15)",
-              border: "1px solid #334155",
-              color: "#94a3b8",
-            }}
+            style={{ flex: 1, minWidth: 48, fontWeight: 800, background: "rgba(100,116,139,0.15)", border: "1px solid #334155", color: "#94a3b8" }}
           >
             •
           </button>
@@ -350,8 +378,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
                 minWidth: 48,
                 fontSize: r === 6 ? "1.1rem" : "0.95rem",
                 fontWeight: 800,
-                background:
-                  r === 4 ? "#f59e0b" : r === 6 ? "#22c55e" : "#3b82f6",
+                background: r === 4 ? "#f59e0b" : r === 6 ? "#22c55e" : "#3b82f6",
                 color: r === 6 ? "#052e16" : "white",
               }}
             >
@@ -361,37 +388,16 @@ export default function AdminControls({ match }: AdminControlsProps) {
         </div>
       </div>
 
-      {/* Extras row */}
+      {/* Extras */}
       <div>
-        <p
-          style={{
-            color: "#64748b",
-            fontSize: "0.75rem",
-            fontWeight: 700,
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            marginBottom: "0.5rem",
-          }}
-        >
+        <p style={{ color: "#64748b", fontSize: "0.75rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.5rem" }}>
           Extras (no ball count)
         </p>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button
-            id="add-wide-btn"
-            className="btn btn-ghost"
-            onClick={() => addExtra("Wide")}
-            disabled={loading || isCompleted}
-            style={{ flex: 1 }}
-          >
+          <button id="add-wide-btn" className="btn btn-ghost" onClick={() => addExtra("Wide")} disabled={loading || isCompleted} style={{ flex: 1 }}>
             Wide +1
           </button>
-          <button
-            id="add-noball-btn"
-            className="btn btn-ghost"
-            onClick={() => addExtra("No Ball")}
-            disabled={loading || isCompleted}
-            style={{ flex: 1 }}
-          >
+          <button id="add-noball-btn" className="btn btn-ghost" onClick={() => addExtra("No Ball")} disabled={loading || isCompleted} style={{ flex: 1 }}>
             No Ball +1
           </button>
         </div>
@@ -403,7 +409,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
           id="add-wicket-btn"
           className="btn btn-danger"
           onClick={addWicket}
-          disabled={loading || isCompleted || currentWickets >= 10}
+          disabled={loading || isCompleted || currentWickets >= maxWickets}
           style={{ flex: 1 }}
         >
           🎯 Wicket
@@ -432,8 +438,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
             background: "rgba(59,130,246,0.15)",
             border: "1px solid rgba(59,130,246,0.3)",
             color: "#3b82f6",
-            opacity:
-              loading || isCompleted || match.currentInnings === "B" ? 0.4 : 1,
+            opacity: loading || isCompleted || match.currentInnings === "B" ? 0.4 : 1,
           }}
         >
           ⇄ Switch Innings
@@ -463,17 +468,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
       )}
 
       {isCompleted && (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "0.75rem",
-            color: "#64748b",
-            fontSize: "0.875rem",
-            fontWeight: 600,
-            border: "1px solid #1e293b",
-            borderRadius: 8,
-          }}
-        >
+        <div style={{ textAlign: "center", padding: "0.75rem", color: "#64748b", fontSize: "0.875rem", fontWeight: 600, border: "1px solid #1e293b", borderRadius: 8 }}>
           ✓ Match Completed
         </div>
       )}

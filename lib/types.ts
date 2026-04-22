@@ -28,6 +28,9 @@ export interface Match {
   status: "live" | "completed";
   currentInnings: "A" | "B";
   createdAt: Date;
+  // Configurable match limits set at match start
+  maxOvers: number;   // innings ends automatically after this many overs
+  maxWickets: number; // innings ends automatically after this many wickets
   // Action log for undo feature: array of state snapshots
   actionLog?: MatchScore[];
   // Last scoring event — used to trigger celebration overlays on all clients
