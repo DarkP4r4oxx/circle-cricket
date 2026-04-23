@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { db } from "@/lib/firebase";
-import { doc, updateDoc, arrayUnion, setDoc, increment } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, setDoc, increment, getDoc } from "firebase/firestore";
 import type { Match, MatchScore } from "@/lib/types";
 import Toast from "@/components/Toast";
 
@@ -219,10 +219,18 @@ export default function AdminControls({ match }: AdminControlsProps) {
           ? match.teamA
           : null;
 
-      // runsFor / runsAgainst are SET to the latest match score (not accumulated)
+      // Fetch current team docs so we can keep only the highest score ever
+      const [snapA, snapB] = await Promise.all([
+        getDoc(doc(db, "teams", match.teamA)),
+        getDoc(doc(db, "teams", match.teamB)),
+      ]);
+      const existingA = (snapA.data()?.runsFor as number) ?? 0;
+      const existingB = (snapB.data()?.runsFor as number) ?? 0;
+
+      // runsFor = highest score across all matches (best performance)
       const teamAUpdates = {
         matchesPlayed: increment(1),
-        runsFor: match.scoreA,
+        runsFor: Math.max(existingA, match.scoreA),
         runsAgainst: match.scoreB,
         wins: winner === match.teamA ? increment(1) : increment(0),
         losses: loser === match.teamA ? increment(1) : increment(0),
@@ -230,7 +238,7 @@ export default function AdminControls({ match }: AdminControlsProps) {
       };
       const teamBUpdates = {
         matchesPlayed: increment(1),
-        runsFor: match.scoreB,
+        runsFor: Math.max(existingB, match.scoreB),
         runsAgainst: match.scoreA,
         wins: winner === match.teamB ? increment(1) : increment(0),
         losses: loser === match.teamB ? increment(1) : increment(0),

@@ -285,25 +285,23 @@ export default function AdminPage() {
       const matchSnap = await getDocs(collection(db, "matches"));
       const completed = matchSnap.docs
         .map((d) => ({ id: d.id, ...d.data() } as Record<string, unknown>))
-        .filter((m) => m.status === "completed")
-        .sort((a, b) => {
-          const aT = (a.createdAt as { seconds: number })?.seconds ?? 0;
-          const bT = (b.createdAt as { seconds: number })?.seconds ?? 0;
-          return aT - bT;
-        });
+        .filter((m) => m.status === "completed");
 
-      const latestFor: Record<string, number> = {};
+      // Track highest score each team has ever achieved (best performance)
+      const bestFor: Record<string, number> = {};
       const latestAgainst: Record<string, number> = {};
       for (const m of completed) {
         const teamA = m.teamA as string;
         const teamB = m.teamB as string;
         const scoreA = (m.scoreA as number) ?? 0;
         const scoreB = (m.scoreB as number) ?? 0;
-        latestFor[teamA] = scoreA; latestAgainst[teamA] = scoreB;
-        latestFor[teamB] = scoreB; latestAgainst[teamB] = scoreA;
+        bestFor[teamA] = Math.max(bestFor[teamA] ?? 0, scoreA);
+        bestFor[teamB] = Math.max(bestFor[teamB] ?? 0, scoreB);
+        latestAgainst[teamA] = scoreB;
+        latestAgainst[teamB] = scoreA;
       }
 
-      const writes = Object.entries(latestFor).map(([teamId, runs]) =>
+      const writes = Object.entries(bestFor).map(([teamId, runs]) =>
         updateDoc(doc(db, "teams", teamId), { runsFor: runs, runsAgainst: latestAgainst[teamId] ?? 0 })
       );
       await Promise.all(writes);

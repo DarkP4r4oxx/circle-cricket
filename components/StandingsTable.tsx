@@ -27,7 +27,7 @@ export default function StandingsTable({ teams }: StandingsTableProps) {
               { label: "#", align: "center" },
               { label: "Team", align: "left" },
               { label: "Matches", align: "center" },
-              { label: "Runs Scored", align: "center" },
+              { label: "Best Score", align: "center" },
               { label: "Runs Conceded", align: "center" },
               { label: "Diff", align: "center" },
             ].map((h) => (

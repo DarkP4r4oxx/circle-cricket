@@ -71,7 +71,7 @@ function PodiumCard({
         {team ? (
           <p style={{ fontSize: rank === 1 ? "1.75rem" : "1.3rem", fontWeight: 900, color, letterSpacing: "-0.03em" }}>
             {team.runsFor}
-            <span style={{ fontSize: "0.4em", color: "#64748b", fontWeight: 600 }}> runs</span>
+            <span style={{ fontSize: "0.4em", color: "#64748b", fontWeight: 600 }}> best</span>
           </p>
         ) : (
           <p style={{ color: "#334155", fontSize: "0.75rem" }}>No data</p>
@@ -123,7 +123,7 @@ export default function StandingsPage() {
             🏆 <span className="gradient-text">Standings</span>
           </h1>
           <p style={{ color: "#64748b", fontSize: "0.875rem" }}>
-            Ranked by total runs scored
+            Ranked by highest score achieved
           </p>
         </div>
 
